@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <sys/types.h>
 
 #include "sfloat.h"
 
@@ -395,7 +396,8 @@ struct Float32 parse_float32(char *cs)
     }
     // new float 16
     struct Float32 f32 = {.sign = d.sign, .exponent = 0, .significand = NULL};
-    Binary fb = {.bit_cnt = FLOAT32_TRAILING, .bits = (u_int8_t[FLOAT32_TRAILING]){0}};
+    Binary fb = {.bit_cnt = FLOAT32_TRAILING, .bits = malloc(sizeof(u_int8_t) * FLOAT32_TRAILING)};
+    reset_binary(fb);
     f32.significand = fb;
     // should be freed when used
     Binary int_b = convert2binary(integers, int_len);

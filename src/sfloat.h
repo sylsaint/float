@@ -1,5 +1,6 @@
 #include<stdint.h>
 #include<stdbool.h>
+#include <sys/types.h>
 
 #define INFTY '∞'
 #define sNaN "sNaN"
@@ -47,6 +48,7 @@ struct Float32 {
     u_int8_t sign;
     u_int32_t exponent;
     Binary significand;
+    char* raw;
 };
 
 // [+-]?(0|[1, 9][0, 9]*)?[.][0, 9]+([eE][+-]?[0, 9]+)?
