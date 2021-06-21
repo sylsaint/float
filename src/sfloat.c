@@ -1,9 +1,11 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <assert.h>
 
 #include "sfloat.h"
 
+Binary B0 = {.bit_cnt = 1, .bits = (u_int8_t[1]){0}};
 Binary BI = {.bit_cnt = 1, .bits = (u_int8_t[1]){1}};
 Binary BII = {.bit_cnt = 2, .bits = (u_int8_t[2]){0, 1}};
 Binary BIII = {.bit_cnt = 2, .bits = (u_int8_t[2]){1, 1}};
@@ -15,14 +17,41 @@ Binary BVIII = {.bit_cnt = 4, .bits = (u_int8_t[4]){0, 0, 0, 1}};
 Binary BIX = {.bit_cnt = 4, .bits = (u_int8_t[4]){1, 0, 0, 1}};
 Binary BX = {.bit_cnt = 4, .bits = (u_int8_t[4]){0, 1, 0, 1}};
 
+
+void print_float32(struct Float32 f32)
+{
+    printf("{ sign = %d, exponent = %d, significand = ", f32.sign, f32.exponent);
+    print_binary(f32.significand);
+    printf(" }\n");
+}
+
 void print_binary(Binary b)
 {
-    if (b.dot) printf("0.");
+    printf("{ bit_cnt = %d, bits = '", b.bit_cnt);
+    if (b.dot)
+        printf("0.");
     for (int i = b.bit_cnt; i > 0; i--)
     {
         printf("%d", *(b.bits + i - 1));
     }
-    printf("\n");
+    printf("' }");
+}
+
+void copy_bit(Binary from, Binary to, u_int32_t len, u_int32_t offset)
+{
+    assert(len + offset <= from.bit_cnt && len <= to.bit_cnt);
+    for (int i = 0; i < len; i++)
+    {
+        *(to.bits + i) = *(from.bits + i + offset);
+    }
+}
+
+void reset_binary(Binary b)
+{
+    for(int i = 0; i < b.bit_cnt; i++)
+    {
+        *(b.bits + i) = 0;
+    }
 }
 
 Binary plus_binary(Binary b1, Binary b2)
@@ -92,35 +121,89 @@ Binary multiply_binary(Binary b1, Binary b2)
     return bf;
 }
 
-Binary decimal2binary(u_int8_t *cs, u_int32_t len, u_int32_t precision)
+Binary decimal2binary(u_int8_t *cs, u_int32_t len, u_int32_t precision, u_int32_t max_zeros)
 {
+    // TODO: should consider 0.0000000
+    bool all_zero = true;
+    for (int i = 0; i < len; i++)
+    {
+        if (*(cs + i)) all_zero = false;
+    }
+    if (all_zero) {
+        Binary bf = {.bit_cnt = 0, .bits = malloc(sizeof(u_int8_t) * precision), .dot = 1, .leading_zeros = 0};
+        return bf;
+    }
     // radix binary represent 10^n
-    Binary b = { .bit_cnt = precision, .bits = malloc(sizeof(u_int8_t) * precision), .dot = 1 };
+    Binary b = {.bit_cnt = precision, .bits = malloc(sizeof(u_int8_t) * precision), .dot = 1};
+    u_int32_t zero_cnt = 0;
+    // count leading zeros
+    while (zero_cnt < max_zeros)
+    {
+        u_int8_t carry = 0;
+        for (u_int32_t i = len; i > 0; i--)
+        {
+            u_int8_t sum = *(cs + i - 1) * 2 + carry;
+            *(cs + i - 1) = sum % 10; 
+            carry = sum / 10;
+        }
+        if (carry == 1)
+        {
+            precision--;
+            *(b.bits + precision) = carry;
+            break;
+        }
+        zero_cnt++;
+    }
     while (precision--)
     {
         u_int8_t carry = 0;
         for (u_int32_t i = len; i > 0; i--)
         {
-            *(cs + i - 1) = *(cs + i - 1) * 2 % 10 + carry;
-            carry = *(cs + i - 1) / 10;
+            u_int8_t sum = *(cs + i - 1) * 2 + carry;
+            *(cs + i - 1) = sum % 10; 
+            carry = sum / 10;
         }
         *(b.bits + precision) = carry;
     }
-    return b;
+    Binary bf = {.bit_cnt = zero_cnt + b.bit_cnt, .bits = malloc(sizeof(u_int8_t) * (zero_cnt + b.bit_cnt)), .dot = 1, .leading_zeros = zero_cnt};
+    reset_binary(bf);
+    for (int i = 0; i < b.bit_cnt; i++)
+    {
+        *(bf.bits + i) = *(b.bits + i);
+    }
+    for (int i = 0; i < zero_cnt; i++)
+    {
+        *(bf.bits + i + b.bit_cnt) = 0;
+    }
+    // clean up
+    revoke(b);
+    return bf;
 }
 
 Binary convert2binary(u_int8_t *cs, u_int32_t len)
 {
+    // TODO: should consider 0.0000000
+    bool all_zero = true;
+    for (int i = 0; i < len; i++)
+    {
+        if (*(cs + i)) all_zero = false;
+    }
+    if (all_zero) {
+        Binary bf = { .bit_cnt = 0, .bits = malloc(sizeof(u_int8_t) * len) };
+        return bf;
+    }
     // radix binary represent 10^n
     Binary b0 = BI;
-    Binary bx = {.bit_cnt = 1, .bits = malloc((sizeof(u_int8_t)))};
-    *(bx.bits) = 1;
-    Binary b = {.bit_cnt = 0, .bits = NULL};
+    Binary b = {.bit_cnt = 1, .bits = malloc((sizeof(u_int8_t)))};
+    *(b.bits) = 0;
     for (u_int32_t i = 0; i < len; i++)
     {
         u_int8_t datum = *(cs + i);
         switch (datum)
         {
+        case 0:
+            b0 = B0;
+            break;
         case 1:
             b0 = BI;
             break;
@@ -151,14 +234,12 @@ Binary convert2binary(u_int8_t *cs, u_int32_t len)
         default:
             break;
         }
-        u_int8_t *to_free_base_bits = bx.bits;
-        Binary b1 = multiply_binary(b0, bx);
-        u_int8_t *to_free_bits = b.bits;
-        b = plus_binary(b, b1);
-        bx = multiply_binary(bx, BX);
-        free(b1.bits);
-        free(to_free_bits);
-        free(to_free_base_bits);
+        u_int8_t *to_free_b = b.bits;
+        b = multiply_binary(b, BX);
+        free(to_free_b);
+        to_free_b = b.bits;
+        b = plus_binary(b, b0);
+        free(to_free_b);
     }
     return b;
 }
@@ -176,34 +257,28 @@ u_int32_t get_exp_num(u_int8_t *exps, u_int32_t len)
     return n;
 }
 
-void parse_float(char *cs)
+struct Float32 parse_float32(char *cs)
 {
-    struct Float16Decimal d = {.sign = 0, .numbers = NULL, .exponents = NULL, .exp_sign = 0};
+    struct FloatDecimal d = {.sign = 0, .numbers = NULL, .exponents = NULL, .exp_sign = 0};
 
     // detect the length of cs
     u_int32_t cs_len = 0;
     while (*(cs + cs_len) != CHAR_END)
         cs_len++;
-    printf("cs len = %d\n", cs_len);
     u_int8_t *numbers = malloc(sizeof(u_int8_t) * cs_len);
     u_int8_t *numbers_p = numbers;
-    printf("sign: ");
     if (*cs == SIGN_MINUS)
     {
-        printf("%c", *cs);
         cs++;
         d.sign = 1;
     }
     if (*cs == SIGN_PLUS)
     {
-        printf("%c", *cs);
         cs++;
     }
     u_int32_t int_cnt = 0;
-    printf(" integer: ");
     while (*cs != CHAR_END && *cs != DOT && *cs != EXPONENT_LOWER && *cs != EXPONENT_UPPER)
     {
-        printf("%c", *cs);
         *(numbers_p++) = *(cs++) - '0';
         int_cnt++;
     }
@@ -211,10 +286,8 @@ void parse_float(char *cs)
     // skip the dot(.) char
     *cs != CHAR_END &&*cs != EXPONENT_LOWER &&*cs != EXPONENT_UPPER &&cs++;
     u_int32_t dec_cnt = 0;
-    printf(" decimal: ");
     while (*cs != EXPONENT_LOWER && *cs != EXPONENT_UPPER && *cs != CHAR_END)
     {
-        printf("%c", *cs);
         *(numbers_p++) = *cs++ - '0';
         dec_cnt++;
     }
@@ -222,36 +295,29 @@ void parse_float(char *cs)
     d.numbers = numbers;
     // skip the exp(e|E) char
     *cs != CHAR_END &&cs++;
-    printf(" exponent: ");
     if (*cs == SIGN_MINUS)
     {
-        printf("%c", *cs);
         cs++;
         d.exp_sign = 1;
     }
     if (*cs == SIGN_PLUS)
     {
-        printf("%c", *cs);
         cs++;
     }
     u_int8_t *exps = malloc(sizeof(u_int8_t) * (cs_len - dec_cnt - int_cnt));
     u_int32_t exp_cnt = 0;
     while (*cs != CHAR_END)
     {
-        printf("%c", *cs);
         *(exps + exp_cnt) = *cs++ - '0';
         exp_cnt++;
     }
     d.exponents = exps;
     d.exp_cnt = exp_cnt;
-    printf("\n");
-    printf("decimal count = %d\n", d.dec_cnt);
     // count how many significant decmials, excluding values like 1.000000000
     u_int32_t exp_num = get_exp_num(d.exponents, d.exp_cnt);
-    printf("exp = %d\n", exp_num);
     u_int8_t *integers = malloc(sizeof(u_int8_t) * (d.dec_cnt + d.int_cnt + exp_num));
     u_int8_t *decimals = malloc(sizeof(u_int8_t) * (d.dec_cnt + d.int_cnt + exp_num));
-    u_int32_t int_len = 0, dec_len = 0; 
+    u_int32_t int_len = 0, dec_len = 0;
     if (d.exp_sign && exp_num)
     {
         // negative
@@ -268,7 +334,9 @@ void parse_float(char *cs)
                 *(decimals + i + offset) = *(d.numbers + i);
             }
             dec_len = exp_num + d.dec_cnt;
-        } else {
+        }
+        else
+        {
             int_len = offset;
             for (int i = 0; i < offset; i++)
             {
@@ -280,14 +348,15 @@ void parse_float(char *cs)
             }
             dec_len = exp_num + d.dec_cnt;
         }
-    } else if (exp_num) {
+    }
+    else if (exp_num)
+    {
         // positive
         int32_t offset = (int32_t)exp_num - d.dec_cnt;
-        printf("offset = %d\n", offset);
         if (offset >= 0)
         {
             int_len = d.int_cnt + exp_num;
-            for(int i = 0; i < d.dec_cnt + d.int_cnt; i++)
+            for (int i = 0; i < d.dec_cnt + d.int_cnt; i++)
             {
                 *(integers + i) = *(d.numbers + i);
             }
@@ -296,21 +365,25 @@ void parse_float(char *cs)
                 *(integers + i) = 0;
             }
             dec_len = 0;
-        } else {
+        }
+        else
+        {
             int_len = d.int_cnt + exp_num;
             for (int i = 0; i < int_len; i++)
             {
                 *(integers + i) = *(d.numbers + i);
             }
             dec_len = d.dec_cnt - exp_num;
-            for (int i = 0; i< dec_len; i++)
+            for (int i = 0; i < dec_len; i++)
             {
                 *(decimals + i) = *(d.numbers + int_len + i);
             }
         }
-    } else {
+    }
+    else
+    {
         int_len = d.int_cnt;
-        for(int i = 0; i < int_len; i++)
+        for (int i = 0; i < int_len; i++)
         {
             *(integers + i) = *(d.numbers + i);
         }
@@ -320,78 +393,176 @@ void parse_float(char *cs)
             *(decimals + i) = *(d.numbers + i + int_len);
         }
     }
-    printf("new integers: ");
-    for(int i = 0; i < int_len; i++)
-    {
-        printf("%d", *(integers + i));
-    }
-    printf("\nnew decimals: ");
-    for(int i = 0; i < dec_len; i++)
-    {
-        printf("%d", *(decimals + i));
-    }
-    printf("\n");
+    // new float 16
+    struct Float32 f32 = {.sign = d.sign, .exponent = 0, .significand = NULL};
+    Binary fb = {.bit_cnt = FLOAT32_TRAILING, .bits = (u_int8_t[FLOAT32_TRAILING]){0}};
+    f32.significand = fb;
     // should be freed when used
     Binary int_b = convert2binary(integers, int_len);
-    print_binary(int_b);
-    Binary dot_b = decimal2binary(decimals, dec_len, FLOAT16_PRECISION);
-    print_binary(dot_b);
-    // count exponent
-    struct Float16 f = {.sign = d.sign, .exponent = 0, .significand = NULL};
-    Binary fb = { .bit_cnt = FLOAT16_TRAILING, .bits = (u_int8_t[FLOAT16_TRAILING]){0} };
-    f.significand = fb;
-    if (int_b.bit_cnt > 0)
+    // add additional bit for rounding
+    Binary dot_b = decimal2binary(decimals, dec_len, FLOAT32_PRECISION + 1, FLOAT32_BIAS + FLOAT32_TRAILING - 1);
+    // combine int and dot
+    u_int32_t total_bit_cnt = int_b.bit_cnt + dot_b.bit_cnt;
+    Binary total_b = {.bit_cnt = total_bit_cnt, .bits = malloc(sizeof(u_int8_t) * total_bit_cnt)};
+    reset_binary(total_b);
+    // copy int_b and dot_b to total_b
+    for (int i = 0; i < dot_b.bit_cnt; i++)
     {
-        u_int32_t exponent = int_b.bit_cnt - 1;
-        u_int8_t exp_sign = 0;
-        // infty
-        if (exponent + FLOAT16_BIAS >= 2 * FLOAT16_EMAX + 1)
+        *(total_b.bits + i) = *(dot_b.bits + i);
+    }
+    for (int i = 0; i < int_b.bit_cnt; i++)
+    {
+        *(total_b.bits + i + dot_b.bit_cnt) = *(int_b.bits + i);
+    }
+    if (int_b.bit_cnt == 0)
+    {
+        // zero
+        if (dot_b.bit_cnt == 0)
         {
-            f.exponent = 2 * FLOAT16_EMAX + 1;
-        } else if (exponent + FLOAT16_BIAS == 2 * FLOAT16_EMAX)  {
-            bool exceed = true;
-            u_int32_t trail = FLOAT16_TRAILING;
-            // msb has been encoded in the exponent
-            for (int i = int_b.bit_cnt - 1; i > 0, trail > 0; i--, trail--)
+            f32.exponent = 0;
+        }
+        // subnormal
+        else if (dot_b.leading_zeros >= FLOAT32_BIAS - 1)
+        {
+            f32.exponent = 0;
+            u_int32_t offset = dot_b.bit_cnt + 1 - FLOAT32_BIAS - FLOAT32_TRAILING;
+            u_int8_t carry = *(dot_b.bits + offset - 1);
+            if (carry)
             {
-                if (*(int_b.bits + i - 1) == 0) {
-                    exceed = false;
-                    break;
-                };
-            }
-            for (int i = dot_b.bit_cnt; i > 0, trail > 0; i--, trail--)
-            {
-                if (*(dot_b.bits + i - 1) == 0) {
-                    exceed = false;
-                    break;
-                };
-            }
-            if (trail == 0)
-            {
-                if (FLOAT16_TRAILING + 1 <= int_b.bit_cnt && *(int_b.bits + FLOAT16_TRAILING) == 1) exceed = true;
-                if (FLOAT16_TRAILING + 1 > int_b.bit_cnt && *(dot_b.bits + FLOAT16_TRAILING - int_b.bit_cnt) == 1) exceed = true;
-            }
-            if (exceed)
-            {
-                f.exponent = 2 * FLOAT16_EMAX + 1;
-            } else {
-                f.exponent = exponent + FLOAT16_BIAS;
-                u_int32_t offset = FLOAT16_TRAILING;
-                for (int i = int_b.bit_cnt - 1; i > 0, offset > 0; i--, offset--)
+                Binary carry_bit = {.bit_cnt = 1, .bits = (u_int8_t[1]){1}};
+                Binary dot_sub_b = {.bit_cnt = FLOAT32_TRAILING, .bits = malloc(sizeof(u_int8_t) * (FLOAT32_TRAILING))};
+                copy_bit(dot_b, dot_sub_b, FLOAT32_TRAILING, offset);
+                Binary carried_sub_b = plus_binary(carry_bit, dot_sub_b);
+                if (carried_sub_b.bit_cnt > dot_sub_b.bit_cnt)
                 {
-                    *(f.significand.bits + offset - 1) = *(int_b.bits + i - 1);
+                    f32.exponent++;
+                    copy_bit(carried_sub_b, f32.significand, FLOAT32_TRAILING, 0);
+                } else {
+                    copy_bit(carried_sub_b, f32.significand, FLOAT32_TRAILING, 0);
                 }
-                for (int i = dot_b.bit_cnt; i > 0, offset > 0; i--, offset--)
+                // clean up
+                revoke(dot_sub_b);
+                revoke(carried_sub_b);
+            } else {
+                copy_bit(dot_b, f32.significand, FLOAT16_TRAILING, offset);
+            }
+        }
+        // normal
+        else
+        {
+            f32.exponent = FLOAT32_BIAS - dot_b.leading_zeros - 1;
+            u_int8_t carry = *dot_b.bits;
+            if (carry)
+            {
+                Binary carry_bit = {.bit_cnt = 1, .bits = (u_int8_t[1]){1}};
+                Binary dot_sub_b = {.bit_cnt = FLOAT32_TRAILING + 1, .bits = malloc(sizeof(u_int8_t) * (FLOAT32_TRAILING + 1))};
+                copy_bit(dot_b, dot_sub_b, FLOAT32_TRAILING + 1, 1);
+                Binary carried_sub_b = plus_binary(carry_bit, dot_sub_b);
+                if (carried_sub_b.bit_cnt > dot_sub_b.bit_cnt)
                 {
-                    *(f.significand.bits + offset - 1) = *(dot_b.bits + i - 1);
+                    f32.exponent++;
+                    copy_bit(carried_sub_b, f32.significand, FLOAT32_TRAILING, 1);
+                } else {
+                    copy_bit(carried_sub_b, f32.significand, FLOAT32_TRAILING, 0);
+                }
+                // clean up
+                revoke(dot_sub_b);
+                revoke(carried_sub_b);
+            } else {
+                for (int i = 0; i < FLOAT32_TRAILING; i++)
+                {
+                    *(f32.significand.bits + i) = *(dot_b.bits + i + 1);
                 }
             }
         }
-        // 
-    } else {
-        u_int32_t exponent = int_len - 1;
-        u_int8_t exp_sign = 1;
     }
+    // calc exponent and binary part, round to nearest
+    else if (FLOAT32_TRAILING + 1 < int_b.bit_cnt)
+    {
+        u_int32_t offset = int_b.bit_cnt - 1 - FLOAT32_TRAILING;
+        u_int8_t carry = *(int_b.bits + offset - 1);
+        // test if infty
+        if (int_b.bit_cnt - 1 + FLOAT32_BIAS >= 2 * FLOAT32_EMAX + 1)
+        {
+            f32.exponent = 2 * FLOAT32_EMAX + 1;
+        }
+        else if (carry)
+        {
+            Binary carry_bit = {.bit_cnt = 1, .bits = (u_int8_t[1]){1}};
+            Binary int_sub_b = {.bit_cnt = FLOAT32_TRAILING + 1, .bits = malloc(sizeof(u_int8_t) * (FLOAT32_TRAILING + 1))};
+            copy_bit(int_b, int_sub_b, FLOAT32_TRAILING + 1, offset);
+            Binary carried_int_b = plus_binary(carry_bit, int_sub_b);
+            if (carried_int_b.bit_cnt > int_sub_b.bit_cnt)
+            {
+                f32.exponent = int_b.bit_cnt + FLOAT32_BIAS;
+                // if rounding up to infty
+                if (f32.exponent != 2 * FLOAT32_EMAX + 1)
+                {
+                    copy_bit(carried_int_b, f32.significand, FLOAT32_TRAILING, 1);
+                }
+            }
+            else
+            {
+                f32.exponent = int_b.bit_cnt - 1 + FLOAT32_BIAS;
+                copy_bit(carried_int_b, f32.significand, FLOAT32_TRAILING, 0);
+            }
+            // clean up
+            revoke(int_sub_b);
+            revoke(carried_int_b);
+        }
+        else
+        {
+            f32.exponent = int_b.bit_cnt - 1 + FLOAT32_BIAS;
+            copy_bit(int_b, f32.significand, FLOAT32_TRAILING, int_b.bit_cnt - 1 - FLOAT32_TRAILING);
+        }
+    }
+    else if (FLOAT32_TRAILING + 1 >= int_b.bit_cnt && FLOAT32_TRAILING + 1 < total_bit_cnt)
+    {
+        u_int8_t carry = *(total_b.bits + total_bit_cnt - FLOAT32_TRAILING - 2);
+        if (carry)
+        {
+            Binary carry_bit = {.bit_cnt = 1, .bits = (u_int8_t[1]){1}};
+            Binary total_sub_b = {.bit_cnt = FLOAT32_TRAILING + 1, .bits = malloc(sizeof(u_int8_t) * (FLOAT32_TRAILING + 1))};
+            reset_binary(total_sub_b);
+            copy_bit(total_b, total_sub_b, FLOAT32_TRAILING, total_b.bit_cnt - FLOAT32_TRAILING - 1);
+            Binary carried_sub_b = plus_binary(carry_bit, total_sub_b);
+            if (carried_sub_b.bit_cnt > total_sub_b.bit_cnt)
+            {
+                f32.exponent = int_b.bit_cnt + FLOAT32_BIAS;
+                copy_bit(carried_sub_b, f32.significand, FLOAT32_TRAILING, 1);
+            }
+            else
+            {
+                f32.exponent = int_b.bit_cnt - 1 + FLOAT32_BIAS;
+                copy_bit(carried_sub_b, f32.significand, FLOAT32_TRAILING, 0);
+            }
+            // clean up
+            revoke(total_sub_b);
+            revoke(carried_sub_b);
+        }
+        else
+        {
+            f32.exponent = int_b.bit_cnt - 1 + FLOAT32_BIAS;
+            copy_bit(total_b, f32.significand, FLOAT32_TRAILING, total_b.bit_cnt - FLOAT32_TRAILING - 1);
+        }
+    }
+    else if (FLOAT32_TRAILING + 1 >= total_bit_cnt)
+    {
+        f32.exponent = int_b.bit_cnt - 1 + FLOAT32_BIAS;
+        for (int i = 0; i < FLOAT32_TRAILING + 1 - total_b.bit_cnt; i++)
+        {
+            *(f32.significand.bits + i) = 0;
+        }
+        for (int i = 0; i < total_b.bit_cnt - 1; i++)
+        {
+            *(f32.significand.bits + i + FLOAT32_TRAILING + 1 - total_b.bit_cnt) = *(total_b.bits + i);
+        }
+    }
+    // clean up
+    revoke(int_b);
+    revoke(dot_b);
+    revoke(total_b);
+    return f32;
 }
 
 // dont call it more than once

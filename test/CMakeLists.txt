@@ -1,6 +1,6 @@
 include_directories (${TEST_SOURCE_DIR}/src)
 add_definitions (-DBOOST_TEST_DYN_LINK)
-add_executable (Test test.c)
+add_executable (Test test_float32.c)
 add_executable (TestBinary test_binary.c)
 add_executable (TestConvert test_convert.c)
 target_link_libraries (Test sfloat)
