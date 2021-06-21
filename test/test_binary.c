@@ -1,7 +1,7 @@
 #include<stdio.h>
 #include<stdlib.h>
 
-#include "sfloat.h"
+#include "../src/sfloat.h"
 
 
 int main()
