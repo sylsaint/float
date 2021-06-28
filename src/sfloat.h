@@ -44,12 +44,12 @@ struct Float16 {
     Binary significand;
 };
 
-struct Float32 {
+typedef struct {
     u_int8_t sign;
     u_int32_t exponent;
     Binary significand;
     char* raw;
-};
+} Float32;
 
 // [+-]?(0|[1, 9][0, 9]*)?[.][0, 9]+([eE][+-]?[0, 9]+)?
 struct FloatDecimal {
@@ -65,8 +65,8 @@ struct FloatDecimal {
 };
 
 // float32
-struct Float32 parse_float32(char *chars);
-void print_float32(struct Float32 f);
+Float32 parse_float32(char *chars);
+void print_float32(Float32 f);
 
 bool is_normal(struct Float16 f);
 bool is_subnormal(struct Float16 f);
@@ -82,3 +82,10 @@ void copy_bit(Binary from, Binary dest, u_int32_t len, u_int32_t offset);
 
 // memory related
 void revoke(Binary b);
+
+/**
+ * @brief homogeneous general computational operations
+ * 
+ */
+
+Float32 round_to_integral_tie_to_even(Float32);

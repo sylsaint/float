@@ -19,7 +19,7 @@ Binary BIX = {.bit_cnt = 4, .bits = (u_int8_t[4]){1, 0, 0, 1}};
 Binary BX = {.bit_cnt = 4, .bits = (u_int8_t[4]){0, 1, 0, 1}};
 
 
-void print_float32(struct Float32 f32)
+void print_float32(Float32 f32)
 {
     printf("{ sign = %d, exponent = %d, significand = ", f32.sign, f32.exponent);
     print_binary(f32.significand);
@@ -258,7 +258,7 @@ u_int32_t get_exp_num(u_int8_t *exps, u_int32_t len)
     return n;
 }
 
-struct Float32 parse_float32(char *cs)
+Float32 parse_float32(char *cs)
 {
     struct FloatDecimal d = {.sign = 0, .numbers = NULL, .exponents = NULL, .exp_sign = 0};
 
@@ -395,7 +395,7 @@ struct Float32 parse_float32(char *cs)
         }
     }
     // new float 16
-    struct Float32 f32 = {.sign = d.sign, .exponent = 0, .significand = NULL};
+    Float32 f32 = {.sign = d.sign, .exponent = 0, .significand = NULL};
     Binary fb = {.bit_cnt = FLOAT32_TRAILING, .bits = malloc(sizeof(u_int8_t) * FLOAT32_TRAILING)};
     reset_binary(fb);
     f32.significand = fb;

@@ -13,7 +13,7 @@ int main(int argc, char *argv[])
     {
         for (int i = 1; i < argc; i++)
         {
-            struct Float32 f32 = parse_float32(argv[i]);
+            Float32 f32 = parse_float32(argv[i]);
             print_float32(f32);
             revoke(f32.significand);
         }
