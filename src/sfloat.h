@@ -68,8 +68,8 @@ struct FloatDecimal {
 Float32 parse_float32(char *chars);
 void print_float32(Float32 f);
 
-bool is_normal(struct Float16 f);
-bool is_subnormal(struct Float16 f);
+bool is_normal(Float32 f32);
+bool is_subnormal(Float32 f32);
 
 // binary related
 Binary plus_binary(Binary b1, Binary b2);
@@ -88,4 +88,8 @@ void revoke(Binary b);
  * 
  */
 
-Float32 round_to_integral_tie_to_even(Float32);
+Float32 round_to_integral_ties_to_even(Float32 f32);
+Float32 round_to_integral_ties_to_away(Float32 f32);
+Float32 round_to_integral_toward_zero(Float32 f32);
+Float32 round_to_integral_toward_positive(Float32 f32);
+Float32 round_to_integral_toward_negative(Float32 f32);
